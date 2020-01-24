@@ -176,7 +176,7 @@ func runCmd(ctx context.Context, mgr checkpointstate.Manager) (bool, error) {
 			switch {
 			case strings.Contains(shell, "bash") || strings.Contains(shell, "zsh"):
 			default:
-				return true, fmt.Errorf("unsupported shell: %v", shell)
+				return true, fmt.Errorf("unsupported shell: %q", shell)
 			}
 			fmt.Printf("export %s=%s\n", CHECKPOINT_SESSION_ID, id)
 			fmt.Printf(`function completed() {

@@ -8,4 +8,7 @@ jobs:
       - run: go get -v -t -d ./...
       - run:
           shell: /bin/bash
+          command: set
+      - run:
+          shell: /bin/bash
           command: go test -v ./...

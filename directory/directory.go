@@ -7,11 +7,14 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
+	"time"
 
 	"github.com/cosnicolaou/checkpoint/checkpointstate"
 	"golang.org/x/sys/unix"
@@ -21,7 +24,11 @@ type directoryManager struct {
 	root string
 }
 
-const currentStepFile = "in-progress"
+const (
+	currentStepFile = "in-progress"
+	metadataFile    = "metadata"
+	timeFormat      = time.RFC3339Nano
+)
 
 // NewManager returns a new instance of a checkpointstate.Manager that
 // manages checkpoints in a local, POSIX-compliant, filesystem directory.
@@ -71,15 +78,39 @@ func (dm *directoryManager) Use(ctx context.Context, id string, reset bool) (che
 		return nil, err
 	}
 	sessionDir := filepath.Join(dm.root, id)
-	if err := os.Mkdir(sessionDir, 0700); err != nil && !os.IsExist(err) {
-		return nil, err
-	}
 	if reset {
+		if err := os.Mkdir(sessionDir, 0700); err != nil && !os.IsExist(err) {
+			return nil, err
+		}
 		if err := os.Remove(filepath.Join(sessionDir, currentStepFile)); err != nil && !os.IsNotExist(err) {
 			return nil, err
 		}
 	}
 	return &directorySession{session: sessionDir}, nil
+}
+
+// List implements checkpointstate.Manager.
+func (dm *directoryManager) List(ctx context.Context) ([]string, error) {
+	dirs := []string{}
+	err := filepath.Walk(dm.root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() && path != dm.root {
+			dirs = append(dirs, info.Name())
+		}
+		return nil
+	})
+	sort.Strings(dirs)
+	return dirs, err
+}
+
+type stepState struct {
+	Step     string
+	StepFile string
+	// RFC3339Nano formatted times.
+	Created   string
+	Completed string
 }
 
 // Step implements checkpointstate.Session
@@ -110,8 +141,45 @@ func (ds *directorySession) Step(ctx context.Context, step string) (bool, error)
 	if !os.IsNotExist(err) {
 		return false, err
 	}
+	buf, _ := json.Marshal(stepState{
+		Step:     step,
+		Created:  time.Now().Format(timeFormat),
+		StepFile: stepFile,
+	})
 	// Mark the requested step as in process.
-	return false, ioutil.WriteFile(filepath.Join(ds.session, currentStepFile), []byte(stepFile), 0400)
+	return false, ioutil.WriteFile(filepath.Join(ds.session, currentStepFile), buf, 0600)
+}
+
+func (ds *directorySession) Steps(ctx context.Context) ([]checkpointstate.Step, error) {
+	steps := []checkpointstate.Step{}
+	err := filepath.Walk(ds.session, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || info.Name() == metadataFile {
+			return nil
+		}
+		buf, err := ioutil.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		var state stepState
+		if err := json.Unmarshal(buf, &state); err != nil {
+			return nil
+		}
+		var created, completed time.Time
+		created, _ = time.Parse(timeFormat, state.Created)
+		if len(state.Completed) > 0 {
+			completed, _ = time.Parse(timeFormat, state.Completed)
+		}
+		steps = append(steps, checkpointstate.Step{
+			Name:      state.Step,
+			Created:   created,
+			Completed: completed,
+		})
+		return nil
+	})
+	sort.Slice(steps, func(i, j int) bool {
+		return steps[i].Created.Before(steps[j].Created)
+	})
+	return steps, err
 }
 
 func (ds *directorySession) markDone(step string) error {
@@ -124,17 +192,24 @@ func (ds *directorySession) markDone(step string) error {
 		}
 		return err
 	}
-	if string(buf) == filepath.Join(ds.session, step) {
+	var state stepState
+	if err := json.Unmarshal(buf, &state); err != nil {
+		return fmt.Errorf("failed to unmarshal state for step %v: %v", step, err)
+	}
+	if state.StepFile == filepath.Join(ds.session, step) {
 		return nil
 	}
-	stepFile := string(buf)
-	if _, err := os.Stat(stepFile); err == nil || !os.IsNotExist(err) {
+	if _, err := os.Stat(state.StepFile); err == nil || !os.IsNotExist(err) {
 		if err == nil {
-			return fmt.Errorf("step %v is being reused", stepFile)
+			return fmt.Errorf("step %v is being reused", state.StepFile)
 		}
-		return fmt.Errorf("step %v is being reused or it could not be accessed: %v", stepFile, err)
+		return fmt.Errorf("step %v is being reused or it could not be accessed: %v", state.StepFile, err)
 	}
-	return os.Rename(current, stepFile)
+	state.Completed = time.Now().Format(timeFormat)
+	err = os.Rename(current, state.StepFile)
+	buf, _ = json.Marshal(state)
+	ioutil.WriteFile(state.StepFile, buf, 0400)
+	return err
 }
 
 // Delete implements checkpointstate.Session,
@@ -147,4 +222,40 @@ func (ds *directorySession) Delete(ctx context.Context) error {
 	// Note that this will delete the underlying directory before the
 	// lock on it is released.
 	return os.RemoveAll(ds.session)
+}
+
+// SetMetadata implements checkpointstate.Session,
+func (ds *directorySession) SetMetadata(ctx context.Context, metadata map[string]interface{}) error {
+	unlock, err := lock(ds.session)
+	defer unlock()
+	if err != nil {
+		return err
+	}
+	buf, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("failed to json encode metadata: %v", err)
+	}
+	return ioutil.WriteFile(filepath.Join(ds.session, metadataFile), buf, 0600)
+}
+
+// Metadata implements checkpointstate.Session,
+func (ds *directorySession) Metadata(ctx context.Context) (map[string]interface{}, error) {
+	unlock, err := lock(ds.session)
+	defer unlock()
+	if err != nil {
+		return nil, err
+	}
+	filename := filepath.Join(ds.session, metadataFile)
+	buf, err := ioutil.ReadFile(filename)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var md map[string]interface{}
+	if err := json.Unmarshal(buf, &md); err != nil {
+		return nil, fmt.Errorf("failed to decode json data from %v: %v", filename, err)
+	}
+	return md, nil
 }

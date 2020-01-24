@@ -5,11 +5,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/cosnicolaou/checkpoint/checkpointstate"
 	"github.com/cosnicolaou/checkpoint/directory"
@@ -45,7 +47,7 @@ func main() {
 	ctx := context.Background()
 	fn := managers["directory"]
 	mgr := fn()
-	if ok, err := useOrDelete(ctx, mgr); ok {
+	if ok, err := runCmd(ctx, mgr); ok {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "FAILED: %v\n", err)
 			os.Exit(2)
@@ -84,16 +86,91 @@ func deleteSession(ctx context.Context, mgr checkpointstate.Manager, id string) 
 	return sess.Delete(ctx)
 }
 
-func useOrDelete(ctx context.Context, mgr checkpointstate.Manager) (bool, error) {
+func runCmd(ctx context.Context, mgr checkpointstate.Manager) (bool, error) {
 	if nargs := len(os.Args); nargs >= 2 {
-		switch os.Args[1] {
+		verb := os.Args[1]
+		switch verb {
+		case "list":
+			sessions, err := mgr.List(ctx)
+			if err != nil {
+				return true, fmt.Errorf("failed to list sessions: %v", err)
+			}
+			for _, id := range sessions {
+				sess, err := mgr.Use(ctx, id, false)
+				if err != nil {
+					return true, fmt.Errorf("failed to use session %v: %v", id, err)
+				}
+				md, err := sess.Metadata(ctx)
+				buf, _ := json.MarshalIndent(md, "  ", "    ")
+				fmt.Printf("%v: %s\n", id, buf)
+			}
+			return true, nil
+		case "state", "dump":
+			id := os.Getenv(CHECKPOINT_SESSION_ID)
+			if nargs == 3 {
+				id = os.Args[2]
+			}
+			if len(id) == 0 {
+				return true, fmt.Errorf("no session found either as an argument or as environment variable\n")
+			}
+			sess, err := mgr.Use(ctx, id, false)
+			if err != nil {
+				return true, fmt.Errorf("failed to use session %v: %v", id, err)
+			}
+			md, err := sess.Metadata(ctx)
+			if err != nil {
+				return true, fmt.Errorf("failed to get session metadata %v: %v", id, err)
+			}
+			steps, err := sess.Steps(ctx)
+			if err != nil {
+				return true, fmt.Errorf("failed to get session steps %v: %v", id, err)
+			}
+			if verb == "dump" {
+				buf, _ := json.MarshalIndent(md, "", " ")
+				fmt.Println(string(buf))
+				for _, step := range steps {
+					buf, _ := json.MarshalIndent(step, "", " ")
+					fmt.Println(string(buf))
+				}
+				return true, nil
+			}
+			tags := []string{}
+			for _, v := range md["Tags"].([]interface{}) {
+				tags = append(tags, v.(string))
+			}
+			fmt.Printf("%v: %v\n", strings.Join(tags, ", "), md["ID"])
+			for _, step := range steps {
+				if step.Completed.IsZero() {
+					fmt.Printf("%v: current: %v... %v\n", step.Name, step.Created, time.Now().Sub(step.Created))
+					continue
+				}
+				fmt.Printf("%v: %v\n", step.Name, step.Completed.Sub(step.Created))
+			}
+			return true, nil
 		case "use":
 			if nargs == 2 {
 				return true, fmt.Errorf("no session name provided\n")
 			}
-			id := mgr.SessionID(os.Args[2:]...)
-			if _, err := mgr.Use(ctx, id, true); err != nil {
-				return true, fmt.Errorf("failed to use/create session for %v\n", os.Args[2:])
+			tags := os.Args[2:]
+			id := mgr.SessionID(tags...)
+			sess, err := mgr.Use(ctx, id, true)
+			if err != nil {
+				return true, fmt.Errorf("failed to use/create session for %v\n", tags)
+			}
+			metadata, err := sess.Metadata(ctx)
+			if err != nil {
+				return true, fmt.Errorf("failed to access metadata for %v: %v\n", tags, id)
+			}
+			if metadata == nil {
+				metadata = map[string]interface{}{
+					"Tags":    tags,
+					"ID":      id,
+					"Created": time.Now(),
+				}
+			}
+			metadata["Accessed"] = time.Now()
+			if err := sess.SetMetadata(ctx, metadata); err != nil {
+				return true, fmt.Errorf("failed to write metadata for %v: %v: %v\n", tags, id, err)
 			}
 			shell := os.Getenv("SHELL")
 			switch {
@@ -109,13 +186,13 @@ func useOrDelete(ctx context.Context, mgr checkpointstate.Manager) (bool, error)
 			return true, nil
 		case "delete":
 			id := os.Getenv(CHECKPOINT_SESSION_ID)
-			if len(id) > 0 {
-				return true, deleteSession(ctx, mgr, id)
+			if nargs == 3 {
+				id = os.Args[2]
 			}
-			if nargs == 2 {
-				return true, fmt.Errorf("no session name provided\n")
+			if len(id) == 0 {
+				return true, fmt.Errorf("no session found either as an argument or as environment variable\n")
 			}
-			return true, deleteSession(ctx, mgr, mgr.SessionID(os.Args[3:]...))
+			return true, deleteSession(ctx, mgr, id)
 		}
 	}
 	return false, nil

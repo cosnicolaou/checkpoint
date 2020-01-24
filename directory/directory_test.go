@@ -14,7 +14,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/cosnicolaou/checkpoint/checkpointstate"
 	"github.com/cosnicolaou/checkpoint/directory"
 )
 
@@ -51,6 +53,64 @@ func TestIDs(t *testing.T) {
 	}
 }
 
+func TestMetadata(t *testing.T) {
+	ctx := context.Background()
+	dir, err := ioutil.TempDir("", "local-file")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mgr := directory.NewManager(dir)
+	ids, err := mgr.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := ids, []string{}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+
+	id := mgr.SessionID("a", "b")
+	sess, err := mgr.Use(ctx, id, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	md := map[string]interface{}{
+		"Input": []string{"a", "b"},
+		"ID":    id,
+		"Date":  now.Format(time.RFC3339),
+	}
+
+	if err := sess.SetMetadata(ctx, md); err != nil {
+		t.Fatal(err)
+	}
+
+	nmd, err := sess.Metadata(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := len(nmd), len(md); got != want {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	if got, want := nmd["ID"], md["ID"]; got != want {
+		t.Errorf("got %v, want %v", got, want)
+	}
+
+	id1 := mgr.SessionID("c")
+	sess, err = mgr.Use(ctx, id1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ids, err = mgr.List(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := ids, []string{id1, id}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}
+
 func TestDirectory(t *testing.T) {
 	ctx := context.Background()
 	dir, err := ioutil.TempDir("", "local-file")
@@ -59,13 +119,13 @@ func TestDirectory(t *testing.T) {
 	}
 	mgr := directory.NewManager(dir)
 	id := mgr.SessionID("/a/b/c")
-	fmt.Printf("ID: %v", id)
 	sess, err := mgr.Use(ctx, id, true)
 	if got, want := list(dir), []string{filepath.Join(dir, id)}; !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 	var gotOk bool
 	var gotError error
+	var gotSteps []checkpointstate.Step
 
 	expect := func(ticked bool, err string) {
 		_, file, line, _ := runtime.Caller(1)
@@ -85,11 +145,35 @@ func TestDirectory(t *testing.T) {
 		}
 	}
 
+	expectSteps := func(names ...string) {
+		_, file, line, _ := runtime.Caller(1)
+		loc := fmt.Sprintf("%v:%v", filepath.Base(file), line)
+		if gotError != nil {
+			t.Errorf("%v: unexpected error: %v", loc, gotError)
+		}
+		var gotNames []string
+		for _, v := range gotSteps {
+			gotNames = append(gotNames, v.Name)
+		}
+		if got, want := gotNames, names; !reflect.DeepEqual(got, want) {
+			t.Errorf("%v: got %v, want %v", loc, got, want)
+		}
+	}
+
+	gotSteps, gotError = sess.Steps(ctx)
+	expectSteps()
+
 	gotOk, gotError = sess.Step(ctx, "a")
 	expect(false, "")
 
+	gotSteps, gotError = sess.Steps(ctx)
+	expectSteps("a")
+
 	gotOk, gotError = sess.Step(ctx, "b")
 	expect(false, "")
+
+	gotSteps, gotError = sess.Steps(ctx)
+	expectSteps("a", "b")
 
 	gotOk, gotError = sess.Step(ctx, "a")
 	expect(true, "")
@@ -158,4 +242,34 @@ func TestDirectory(t *testing.T) {
 	gotOk, gotError = sess.Step(ctx, "b")
 	expect(true, "")
 
+	id1 := mgr.SessionID("xyz")
+	sess, err = mgr.Use(ctx, id1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	gotSteps, gotError = sess.Steps(ctx)
+	expectSteps()
+
+	sess.Step(ctx, "zz")
+	sess.Step(ctx, "xx")
+	gotSteps, gotError = sess.Steps(ctx)
+	expectSteps("zz", "xx")
+	if gotSteps[0].Completed.IsZero() {
+		t.Errorf("completed state has no completion time")
+	}
+	if !gotSteps[1].Completed.IsZero() {
+		t.Errorf("current state has completion time")
+	}
+	time.Sleep(time.Second)
+	sess.Step(ctx, "ww")
+	gotSteps, gotError = sess.Steps(ctx)
+	expectSteps("zz", "xx", "ww")
+	if !gotSteps[2].Completed.IsZero() {
+		t.Errorf("current state has completion time")
+	}
+	duration := gotSteps[1].Completed.Sub(gotSteps[0].Completed)
+	if from, to := time.Second, time.Minute; duration < from || duration > to {
+		t.Errorf("step duration is out of expected range: %v: %v...%v", duration, from, to)
+	}
 }

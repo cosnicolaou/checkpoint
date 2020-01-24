@@ -70,10 +70,10 @@ func main() {
 	}
 	if ok {
 		// done
-		os.Exit(1)
+		os.Exit(0)
 	}
 	// not done.
-	os.Exit(0)
+	os.Exit(1)
 }
 
 func deleteSession(ctx context.Context, mgr checkpointstate.Manager, id string) error {
@@ -102,7 +102,7 @@ func useOrDelete(ctx context.Context, mgr checkpointstate.Manager) (bool, error)
 				return true, fmt.Errorf("unsupported shell: %v", shell)
 			}
 			fmt.Printf("export %s=%s\n", CHECKPOINT_SESSION_ID, id)
-			fmt.Printf(`function step() {
+			fmt.Printf(`function completed() {
 	%s "$@"
 }
 `, os.Args[0])

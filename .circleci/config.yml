@@ -3,11 +3,10 @@ jobs:
   build:
     docker:
       - image: circleci/golang:1.13.4
-    environment:
-      SHELL=/bin/bash
+    environment: SHELL=/bin/bash
     steps:
       - checkout
       - run: go get -v -t -d ./...
       - run:
-          shell: /bin/bash     
+          shell: /bin/bash
           command: go test -v ./...

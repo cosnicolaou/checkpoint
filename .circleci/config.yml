@@ -8,4 +8,4 @@ jobs:
       - run: go get -v -t -d ./...
       - run:
           shell: /bin/bash
-          command: bash-c 'go test -v ./...'
+          command: bash -c 'go test -v ./...'

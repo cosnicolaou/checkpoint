@@ -1,5 +1,7 @@
 # Checkpoint
 
+[![CircleCI](https://circleci.com/gh/circleci/circleci-docs.svg?style=svg)](https://circleci.com/gh/circleci/circleci-docs)
+
 Checkpoint provides a simple means of recording and acting
 on checkpoints in scripting environments and in particular
 shell scripts. It allows the user to define appropriate

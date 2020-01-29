@@ -43,6 +43,35 @@ const (
 	CHECKPOINT_SESSION_ID = "CHECKPOINT_SESSION_ID"
 )
 
+const usage = `
+checkpoint: a simple means of recording and acting
+on checkpoints in shell scripts (https://github.com/cosnicolaou/checkpoint).
+
+Checkpoints are grouped into sessions and represent steps in
+some sequential computation. Each step implicitly acknowledges the
+previous one provided that the exit status of the last command
+or pipeline ($?) represents success.
+
+Example:
+
+source <(checkpoint use $0)
+completed step1 || <action>
+completed step2 || <action>
+completed
+completed state
+
+Sessions and checkpoints may be managed as follows:
+ list        - list all checkpoints
+ state       - display summary state of current checkpoint
+ state <id>  - display summary state of specified checkpoint
+ dump        - display full state, in json format
+ dump <id>   - display full state, in json format, of specified checkpoint
+ delete      - delete current checkpoint
+ delete <id> - delete the specified session
+ delete <id> step... -- delete the specified steps from the specified session
+
+`
+
 func main() {
 	ctx := context.Background()
 	fn := managers["directory"]
@@ -78,18 +107,21 @@ func main() {
 	os.Exit(1)
 }
 
-func deleteSession(ctx context.Context, mgr checkpointstate.Manager, id string) error {
+func deleteSession(ctx context.Context, mgr checkpointstate.Manager, id string, steps ...string) error {
 	sess, err := mgr.Use(ctx, id, false)
 	if err != nil {
 		return fmt.Errorf("failed to access session for %q: %v\n", id, err)
 	}
-	return sess.Delete(ctx)
+	return sess.Delete(ctx, steps...)
 }
 
 func runCmd(ctx context.Context, mgr checkpointstate.Manager) (bool, error) {
 	if nargs := len(os.Args); nargs >= 2 {
 		verb := os.Args[1]
 		switch verb {
+		case "help", "--help", "-help":
+			fmt.Fprintf(os.Stderr, "Usage: %v\n", usage)
+			os.Exit(0)
 		case "list":
 			sessions, err := mgr.List(ctx)
 			if err != nil {
@@ -105,13 +137,13 @@ func runCmd(ctx context.Context, mgr checkpointstate.Manager) (bool, error) {
 				fmt.Printf("%v: %s\n", id, buf)
 			}
 			return true, nil
-		case "state", "dump":
+		case "state", "status", "dump":
 			id := os.Getenv(CHECKPOINT_SESSION_ID)
 			if nargs == 3 {
 				id = os.Args[2]
 			}
 			if len(id) == 0 {
-				return true, fmt.Errorf("no session found either as an argument or as environment variable\n")
+				return true, fmt.Errorf("no session found either as an argument or as environment variable %v\n", CHECKPOINT_SESSION_ID)
 			}
 			sess, err := mgr.Use(ctx, id, false)
 			if err != nil {
@@ -180,19 +212,24 @@ func runCmd(ctx context.Context, mgr checkpointstate.Manager) (bool, error) {
 			}
 			fmt.Printf("export %s=%s\n", CHECKPOINT_SESSION_ID, id)
 			fmt.Printf(`function completed() {
+	[[ $? -eq 1 ]] && return 0
 	%s "$@"
 }
 `, os.Args[0])
 			return true, nil
 		case "delete":
 			id := os.Getenv(CHECKPOINT_SESSION_ID)
-			if nargs == 3 {
+			if nargs >= 3 {
 				id = os.Args[2]
 			}
-			if len(id) == 0 {
-				return true, fmt.Errorf("no session found either as an argument or as environment variable\n")
+			var steps []string
+			if nargs >= 4 {
+				steps = os.Args[3:]
 			}
-			return true, deleteSession(ctx, mgr, id)
+			if len(id) == 0 {
+				return true, fmt.Errorf("no session found either as an argument or as environment variable %v\n", CHECKPOINT_SESSION_ID)
+			}
+			return true, deleteSession(ctx, mgr, id, steps...)
 		}
 	}
 	return false, nil
@@ -204,6 +241,7 @@ func runStep(ctx context.Context, mgr checkpointstate.Manager, name string) (boo
 	if err != nil {
 		return false, fmt.Errorf("failed to access session for %q: %v\n", id, err)
 	}
+
 	ok, err := sess.Step(ctx, name)
 	if err != nil {
 		return false, fmt.Errorf("failed to execute step %v: %v\n", name, err)

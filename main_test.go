@@ -110,4 +110,13 @@ func testScripts(t *testing.T, env map[string]string) {
 	if got, want := lines[len(lines)-1], "s3: current"; !strings.HasPrefix(got, want) {
 		t.Errorf("got %v, last line does not start with %v", got, want)
 	}
+
+	r1 = runBashScript("s5.bash", env)
+	if got, want := r1, "1"; got != want {
+		t.Errorf("got %v, want %v", got, want)
+	}
+	r2 = runBashScript("s5.bash", env)
+	if got, want := r2, ""; got != want {
+		t.Errorf("got %v, want %v", got, want)
+	}
 }

@@ -185,6 +185,7 @@ func TestDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	gotOk, gotError = sess.Step(ctx, "a")
 	expect(true, "")
 
@@ -223,6 +224,7 @@ func TestDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	gotOk, gotError = sess.Step(ctx, "a")
 	expect(true, "")
 
@@ -236,6 +238,7 @@ func TestDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	gotOk, gotError = sess.Step(ctx, "a")
 	expect(true, "")
 

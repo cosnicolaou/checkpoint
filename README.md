@@ -29,7 +29,8 @@ Reaching each step implicitly transitions the currently active one to being
 complete; alternatively the current step can be explicitly marked
 as complete using `completed` without an argument. Note that `completed` is
 a shell function defined in the context of the shell via the
-source statement.
+source statement. This shell function tests the exit status of the previous
+command and will not execute the next step if that command failed.
 
 Another anticipated common use case is to guard the execution of a script
 based on the arrival or generation of new data.
@@ -66,6 +67,7 @@ Simple checkpoint management is available to list and delete sessions.
 ```sh
 checkpoint list
 checkpoint delete c4518f9acbeb9d3ac4c7970e899460258cc0f7a923003b73bb0a28fa0f050f99
+checkpoint delete c4518f9acbeb9d3ac4c7970e899460258cc0f7a923003b73bb0a28fa0f050f99 step1
 ```
 
 The detailed metadata and state associated with a session is available in both

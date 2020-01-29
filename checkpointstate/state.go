@@ -39,11 +39,15 @@ type Session interface {
 	// always be the last one and will have a zero completion time.
 	Steps(ctx context.Context) ([]Step, error)
 
-	// Step implicitly 'ticks' an existing 'in-progress' step as done and then
-	// initiates the next step by first checking to see if it has already
-	// been completed, in which case it returns true. If it has not been
-	// completed it will mark it as the next 'in-progress' step.
+	// Step determines if the specified step has been completed it or not;
+	// if it has been completed it will return true, if not, the step will
+	// be marked as in process and it will return false.
 	Step(ctx context.Context, step string) (bool, error)
-	// Delete deletes all of the state associated with the session.
-	Delete(ctx context.Context) error
+
+	// Done marks the specified step as done.
+	//Done(ctx context.Context) error
+
+	// Delete deletes the specified steps, or all of the state associated
+	// with the session if no steps are specified.
+	Delete(ctx context.Context, steps ...string) error
 }

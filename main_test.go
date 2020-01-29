@@ -61,19 +61,23 @@ func testScripts(t *testing.T, env map[string]string) {
 		loc := fmt.Sprintf("%v:%v", filepath.Base(file), line)
 		r1 := runBashScript(script, env)
 		if got, want := r1, gr1; got != want {
-			t.Errorf("%v: got %v, want %v", loc, got, want)
+			t.Errorf("%v: pass 1: got %v, want %v", loc, got, want)
 		}
 		r2 := runBashScript(script, env)
 		if got, want := r2, gr2; got != want {
-			t.Errorf("%v: got %v, want %v", loc, got, want)
+			t.Errorf("%v: pass 2: got %v, want %v", loc, got, want)
 		}
 
 	}
 
+	// step 2 will be rerun
 	runner("s2.bash", "1\n2", "2")
+	// step 2 will not be rerun since the trap marks it as complete
 	runner("s3.bash", "1\n2", "")
+	// show how to use a date as a session name
 	runner("s4.zsh", "new data", "already processed")
-	runner("s5.bash", "1", "")
+	// test that s1 is not marked complet if there's
+	runner("s5.bash", "1", "1")
 
 	type pair struct {
 		line     int
@@ -128,4 +132,6 @@ func testScripts(t *testing.T, env map[string]string) {
 		{8, "s3:"},
 	})
 
+	// 2 will be redone
+	runner("s7.bash", "1\n2", "2")
 }

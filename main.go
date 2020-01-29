@@ -212,7 +212,11 @@ func runCmd(ctx context.Context, mgr checkpointstate.Manager) (bool, error) {
 			}
 			fmt.Printf("export %s=%s\n", CHECKPOINT_SESSION_ID, id)
 			fmt.Printf(`function completed() {
-	[[ $? -eq 1 ]] && return 0
+	if [[ $? -ne 0 ]]; then
+	  CHECKPOINT_ERROR=true
+	  return 0
+	fi
+	[[ "$CHECKPOINT_ERROR" = "true" ]] && return 0
 	%s "$@"
 }
 `, os.Args[0])

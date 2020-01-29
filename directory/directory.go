@@ -122,7 +122,7 @@ func (ds *directorySession) Step(ctx context.Context, step string) (bool, error)
 	}
 
 	// Mark the prior step, if any, as done.
-	if err := ds.markDone(step); err != nil {
+	if err := ds.markDone(ctx, step); err != nil {
 		return false, err
 	}
 
@@ -182,7 +182,7 @@ func (ds *directorySession) Steps(ctx context.Context) ([]checkpointstate.Step, 
 	return steps, err
 }
 
-func (ds *directorySession) markDone(step string) error {
+func (ds *directorySession) markDone(ctx context.Context, step string) error {
 	current := filepath.Join(ds.session, currentStepFile)
 	buf, err := ioutil.ReadFile(current)
 	if err != nil {
@@ -194,7 +194,7 @@ func (ds *directorySession) markDone(step string) error {
 	}
 	var state stepState
 	if err := json.Unmarshal(buf, &state); err != nil {
-		return fmt.Errorf("failed to unmarshal state for step %v: %v", step, err)
+		return fmt.Errorf("failed to unmarshal state for current step %v", err)
 	}
 	if state.StepFile == filepath.Join(ds.session, step) {
 		return nil
@@ -213,15 +213,23 @@ func (ds *directorySession) markDone(step string) error {
 }
 
 // Delete implements checkpointstate.Session,
-func (ds *directorySession) Delete(ctx context.Context) error {
+func (ds *directorySession) Delete(ctx context.Context, steps ...string) error {
 	unlock, err := lock(ds.session)
 	defer unlock()
 	if err != nil {
 		return err
 	}
-	// Note that this will delete the underlying directory before the
-	// lock on it is released.
-	return os.RemoveAll(ds.session)
+	if len(steps) == 0 {
+		// Note that this will delete the underlying directory before the
+		// lock on it is released.
+		return os.RemoveAll(ds.session)
+	}
+	for _, step := range steps {
+		if err := os.Remove(filepath.Join(ds.session, step)); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 // SetMetadata implements checkpointstate.Session,

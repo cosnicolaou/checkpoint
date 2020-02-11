@@ -113,13 +113,22 @@ func TestMetadata(t *testing.T) {
 
 func TestDirectory(t *testing.T) {
 	ctx := context.Background()
-	dir, err := ioutil.TempDir("", "local-file")
-	if err != nil {
-		t.Fatal(err)
+
+	fail := func(err error) {
+		_, file, line, _ := runtime.Caller(1)
+		loc := fmt.Sprintf("%v:%v", filepath.Base(file), line)
+		if err != nil {
+			t.Errorf("%v: unexpected error: %v", loc, err)
+		}
 	}
+
+	dir, err := ioutil.TempDir("", "local-file")
+	fail(err)
+
 	mgr := directory.NewManager(dir)
 	id := mgr.SessionID("/a/b/c")
 	sess, err := mgr.Use(ctx, id, true)
+	fail(err)
 	if got, want := list(dir), []string{filepath.Join(dir, id)}; !reflect.DeepEqual(got, want) {
 		t.Errorf("got %v, want %v", got, want)
 	}
@@ -182,9 +191,7 @@ func TestDirectory(t *testing.T) {
 	expect(true, "")
 
 	sess, err = mgr.Use(ctx, id, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fail(err)
 
 	gotOk, gotError = sess.Step(ctx, "a")
 	expect(true, "")
@@ -192,11 +199,9 @@ func TestDirectory(t *testing.T) {
 	gotOk, gotError = sess.Step(ctx, "b")
 	expect(true, "")
 
-	// make sure that reseting the current step can be overriden.
+	// make sure that reseting the current step can be overridden.
 	sess, err = mgr.Use(ctx, id, false)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fail(err)
 
 	gotOk, gotError = sess.Step(ctx, "c")
 	expect(false, "")
@@ -210,9 +215,7 @@ func TestDirectory(t *testing.T) {
 	sess.Delete(ctx)
 
 	sess, err = mgr.Use(ctx, id, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fail(err)
 
 	gotOk, gotError = sess.Step(ctx, "a")
 	expect(false, "")
@@ -221,9 +224,7 @@ func TestDirectory(t *testing.T) {
 	expect(false, "")
 
 	sess, err = mgr.Use(ctx, id, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fail(err)
 
 	gotOk, gotError = sess.Step(ctx, "a")
 	expect(true, "")
@@ -235,9 +236,7 @@ func TestDirectory(t *testing.T) {
 	expect(true, "")
 
 	sess, err = mgr.Use(ctx, id, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fail(err)
 
 	gotOk, gotError = sess.Step(ctx, "a")
 	expect(true, "")
@@ -247,9 +246,7 @@ func TestDirectory(t *testing.T) {
 
 	id1 := mgr.SessionID("xyz")
 	sess, err = mgr.Use(ctx, id1, true)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fail(err)
 
 	gotSteps, gotError = sess.Steps(ctx)
 	expectSteps()
@@ -264,6 +261,7 @@ func TestDirectory(t *testing.T) {
 	if !gotSteps[1].Completed.IsZero() {
 		t.Errorf("current state has completion time")
 	}
+
 	time.Sleep(time.Second)
 	sess.Step(ctx, "ww")
 	gotSteps, gotError = sess.Steps(ctx)

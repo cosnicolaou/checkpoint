@@ -1,6 +1,7 @@
 # Checkpoint
 
 [![CircleCI](https://circleci.com/gh/circleci/circleci-docs.svg?style=svg)](https://circleci.com/gh/circleci/circleci-docs)
+[![Go Report Card](https://goreportcard.com/badge/github.com/cosnicolaou/checkpoint)](https://goreportcard.com/report/github.com/cosnicolaou/checkpoint)
 
 Checkpoint provides a simple means of recording and acting
 on checkpoints in scripting environments and in particular

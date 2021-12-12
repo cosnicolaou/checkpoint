@@ -3,6 +3,7 @@ package main_test
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -27,6 +28,21 @@ func setup(t *testing.T) {
 	})
 }
 
+/*
+func TestVersion(t *testing.T) {
+	setup(t)
+	cmd := exec.Command("bash", "-c", cmd+" use x")
+	cmd.Env = append(cmd.Env,
+		"SHELL=bash",
+		"HOME="+tmpDir,
+		"PATH="+os.Getenv("PATH")+":"+tmpDir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Log(string(out))
+		t.Fatal(err)
+	}
+}*/
+
 func TestLocal(t *testing.T) {
 	setup(t)
 	testScripts(t, nil)
@@ -45,6 +61,11 @@ func runBashScript(script string, env map[string]string) string {
 	for k, v := range env {
 		cmd.Vars[k] = v
 	}
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		return err.Error()
+	}
+	cmd.Vars["BASH"] = bash
 	cmd.Vars["HOME"] = tmpDir
 	cmd.Vars["PATH"] += ":" + tmpDir
 	return strings.TrimSpace(cmd.CombinedOutput())
@@ -67,7 +88,6 @@ func testScripts(t *testing.T, env map[string]string) {
 		if got, want := r2, gr2; got != want {
 			t.Errorf("%v: pass 2: got %v, want %v", loc, got, want)
 		}
-
 	}
 
 	// step 2 will be rerun

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -209,7 +210,14 @@ func runUseCmd(ctx context.Context, mgr checkpointstate.Manager) (bool, error) {
 	}
 	shell := os.Getenv("SHELL")
 	switch {
-	case strings.Contains(shell, "bash") || strings.Contains(shell, "zsh"):
+	case strings.Contains(shell, "bash"):
+		if err := checkBashVersion(); err != nil {
+			return true, err
+		}
+	case strings.Contains(shell, "zsh"):
+		if err := checkZshVersion(); err != nil {
+			return true, err
+		}
 	default:
 		return true, fmt.Errorf("unsupported shell: %q", shell)
 	}
@@ -225,6 +233,23 @@ fi
 `, os.Args[0])
 	return true, nil
 }
+
+func checkBashVersion() error {
+	out, err := exec.Command("bash", "--version").CombinedOutput()
+	if err != nil {
+		return err
+	}
+	if strings.Contains(string(out), "2007") {
+		return fmt.Errorf("it looks like you are running an old version of bash on a mac, please upgrade to a more recent one")
+	}
+	return nil
+}
+
+func checkZshVersion() error {
+	// All versions of zsh in common use as of 2021 support work.
+	return nil
+}
+
 func runDeleteCmd(ctx context.Context, mgr checkpointstate.Manager) (bool, error) {
 	id := os.Getenv(checkpointSessionIDEnvVar)
 	nargs := len(os.Args)

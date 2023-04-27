@@ -26,7 +26,7 @@ jobs:
       - name: Test
         shell: bash
         run: |
-          go test --race --covermode=atomic ./...
+          SHELL=/bin/bash go test --race --covermode=atomic ./...
 
   linting:
     runs-on: ubuntu-latest

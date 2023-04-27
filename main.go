@@ -7,10 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -24,19 +22,13 @@ var (
 	managers = map[string]factory{}
 )
 
-func must(err error) {
-	if err != nil {
-		log.Fatalf("failed: %v", err)
-	}
-}
-
 func init() {
 	// For now only support directory based checkpoints, but in the future
 	// it should be possible to support different ones such as dynamodb for use
 	// from within AWS lambda's. Choice of the factory will be made via an environment
 	// variable or some other out-of-band mechanism.
 	managers["directory"] = func() checkpointstate.Manager {
-		return directory.NewManager(filepath.Join(os.ExpandEnv("$HOME/.checkpointstate")))
+		return directory.NewManager(os.ExpandEnv("$HOME/.checkpointstate"))
 	}
 }
 
@@ -174,7 +166,7 @@ func runStatusCmds(ctx context.Context, mgr checkpointstate.Manager, verb string
 	fmt.Printf("%v: %v\n", strings.Join(tags, ", "), md["ID"])
 	for _, step := range steps {
 		if step.Completed.IsZero() {
-			fmt.Printf("%v: current: %v... %v\n", step.Name, step.Created, time.Now().Sub(step.Created))
+			fmt.Printf("%v: current: %v... %v\n", step.Name, step.Created, time.Since(step.Created))
 			continue
 		}
 		fmt.Printf("%v: %v\n", step.Name, step.Completed.Sub(step.Created))

@@ -45,7 +45,6 @@ func NewManager(dir string) checkpointstate.Manager {
 
 type directorySession struct {
 	session string
-	err     error
 }
 
 func lock(name string) (func(), error) {

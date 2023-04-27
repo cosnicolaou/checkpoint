@@ -97,7 +97,7 @@ func TestMetadata(t *testing.T) {
 	}
 
 	id1 := mgr.SessionID("c")
-	sess, err = mgr.Use(ctx, id1, true)
+	_, err = mgr.Use(ctx, id1, true)
 	if err != nil {
 		t.Fatal(err)
 	}

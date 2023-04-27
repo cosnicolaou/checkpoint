@@ -23,6 +23,15 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache: true
 
+      - name: Install Bash
+        run: |
+           /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+           brew update
+
+           brew install bash
+
+           echo "/usr/local/bin" >> $GITHUB_PATH
+
       - name: Test
         shell: zsh {0}
         run: |

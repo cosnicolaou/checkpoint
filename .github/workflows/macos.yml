@@ -24,5 +24,6 @@ jobs:
           cache: true
 
       - name: Test
+        shell: zsh
         run: |
           go test -failfast --covermode=atomic -race ./...

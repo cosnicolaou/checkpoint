@@ -45,7 +45,7 @@ type Session interface {
 	Step(ctx context.Context, step string) (bool, error)
 
 	// Done marks the specified step as done.
-	//Done(ctx context.Context) error
+	// Done(ctx context.Context) error
 
 	// Delete deletes the specified steps, or all of the state associated
 	// with the session if no steps are specified.
